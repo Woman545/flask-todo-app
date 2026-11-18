@@ -9,15 +9,14 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: '3.12'
 
     - name: Install dependencies
       run: |
@@ -26,30 +25,36 @@ jobs:
 
     - name: Validate code
       run: |
-        python -m py_compile manage.py
+        python -m py_compile manage.py application/*.py application/controllers/*.py application/models/*.py
         echo "Code validation successful"
 
     - name: Initialize SQLite database
       run: |
-        python manage.py db upgrade
-        echo "Database initialized successfully"
+        python -c "
+        from application import create_app
+        from application.extensions import db
+        app = create_app('production')
+        with app.app_context():
+            db.create_all()
+        print('Database initialized successfully')
+        "
 
     - name: Start Flask server
       run: |
-        python manage.py runserver &
-        echo \$! > flask.pid
+        APP_CONFIG=production python manage.py &
+        echo $! > flask.pid
         sleep 5
 
     - name: Smoke test Flask server
       run: |
         echo "Testing Flask server on port 7345..."
-        curl -f http://localhost:7345/ || exit 1
+        curl -f http://127.0.0.1:7345/ || exit 1
         echo "Smoke test passed! Server is responding."
 
     - name: Stop Flask server
       if: always()
       run: |
         if [ -f flask.pid ]; then
-          kill \$(cat flask.pid) || true
+          kill $(cat flask.pid) || true
           rm flask.pid
         fi
